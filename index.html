@@ -35,6 +35,18 @@
     // lat/lon coordinates into screen coordinates
       var geoPath = d3.geoPath()
           .projection( albersProjection );
+		
+	// Classic D3... Select non-existent elements, bind the data, append the elements, and apply attributes
+	g.selectAll( "path" )
+	    .data( neighborhoods_json.features )
+	    .enter()
+	    .append( "path" )
+	    .attr( "fill", "#ccc" )
+	    .attr( "stroke", "#333")
+	    .attr( "d", geoPath );	
+		
+		
+		
 	</script>	
 </body>
 </html>
