@@ -3,7 +3,7 @@
 <head>
 	<title>Mapping with D3</title>
 	<script src="http://d3js.org/d3.v4.min.js" charset="utf-8"></script>
- 	<script src="/nyc_zip.json"></script>
+ 	<script src="nyc_zip.json"></script>
 </head>
 <body>
 	<!-- Page elements and content go here. -->
@@ -35,6 +35,8 @@
     // lat/lon coordinates into screen coordinates
       var geoPath = d3.geoPath()
           .projection( albersProjection );
+		
+	dataset = d3.json("nyc_zip.json", function(zip_json){return zip_json})
 		
 	// Classic D3... Select non-existent elements, bind the data, append the elements, and apply attributes
 	g.selectAll( "path" )
