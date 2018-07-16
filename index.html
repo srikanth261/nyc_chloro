@@ -1,54 +1,345 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
+
 <head>
-	<title>Mapping with D3</title>
-	<script src="http://d3js.org/d3.v4.min.js" charset="utf-8"></script>
- 	<script src="nyc_zip.json"></script>
+  <meta charset="utf-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <title>NYC ZIP Code</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <!-- Google Fonts -->
+  <link href="https://fonts.googleapis.com/css?family=Roboto:400,700" rel="stylesheet">
+  <!-- Bulma CSS -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bulma/0.7.1/css/bulma.min.css">
+  <style>
+    .nyczipcode-container {
+      font-family: 'Roboto', sans-serif;
+      font-size: 16px;
+      color: #2D2D2D;
+      display: flex;
+    }
+
+    .nyczipcode-side {
+      margin: 12px;
+    }
+
+    .nyczipcode-container .dropdown-selected,
+    .nyczipcode-container .dropdown-item,
+    .nyczipcode-container .button {
+      text-transform: capitalize;
+    }
+
+    .nyczipcode-container .tooltip {
+      position: fixed;
+      background: rgba(0, 0, 0, 0.7);
+      color: #fff;
+      padding: 12px;
+      border-radius: 6px;
+      pointer-events: none;
+      opacity: 0;
+      z-index: 1000;
+    }
+  </style>
+  <!-- Font Awesome -->
+  <script defer src="https://use.fontawesome.com/releases/v5.1.0/js/all.js"></script>
+  <!-- D3 JS -->
+  <script src="https://d3js.org/d3.v5.min.js"></script>
 </head>
+
 <body>
-	<!-- Page elements and content go here. -->
-	<script>
-		// Width and Height of the whole visualization
-      var width = 700;
-      var height = 580;
+  <div class="nyczipcode-container">
+    <div class="nyczipcode-map"></div>
+    <div class="nyczipcode-side"></div>
+  </div>
 
-      // Create SVG
-      var svg = d3.select( "body" )
-          .append( "svg" )
-          .attr( "width", width )
-          .attr( "height", height );
+  <script>
+    (function () {
+      var dataURL = "all_data_sample.csv";
+      var geoURL = "nyczipcodetabulationareas.geojson";
 
-      // Append empty placeholder g element to the SVG
-      // g will contain geometry elements
-      var g = svg.append( "g" );
-    
-    // Width and Height of the whole visualization
-    // Set Projection Parameters    
-      var albersProjection = d3.geoAlbers()
-            .scale( 190000 )
-            .rotate( [71.057,0] )
-            .center( [0, 42.313] )
-            .translate( [width/2,height/2] );
-    
-    
-     // Create GeoPath function that uses built-in D3 functionality to turn
-    // lat/lon coordinates into screen coordinates
-      var geoPath = d3.geoPath()
-          .projection( albersProjection );
-		
-	dataset = d3.json("nyc_zip.json", function(zip_json){return zip_json})
-		
-	// Classic D3... Select non-existent elements, bind the data, append the elements, and apply attributes
-	g.selectAll( "path" )
-	    .data( zip_json.features )
-	    .enter()
-	    .append( "path" )
-	    .attr( "fill", "#ccc" )
-	    .attr( "stroke", "#333")
-	    .attr( "d", geoPath );	
-		
-		
-		
-	</script>	
+      var selectedVariable;
+      var selectedTime = "before";
+      var data = d3.map();
+      var variables;
+      var nycGeoJSON;
+
+      var mapWidth = 600;
+      var mapHeight = 600;
+      var sideWidth = 250;
+      var legendItemHeight = 28;
+      var legendRectSize = 20;
+
+      var formatNumber = d3.format(".2f");
+
+      var projection = d3.geoMercator();
+      var geoPath = d3.geoPath(projection);
+
+      var colorScale = d3.scaleQuantile()
+        .range(["#009392", "#39b185", "#9ccb86", "#e9e29c"]);
+
+      var zoom = d3.zoom()
+        .scaleExtent([1, 16])
+        .on("zoom", zoomed);
+
+      var side = d3.select(".nyczipcode-side")
+        .style("width", sideWidth + "px");
+
+      var svg = d3.select(".nyczipcode-map")
+        .append("svg")
+        .attr("width", mapWidth)
+        .attr("height", mapHeight)
+        .call(zoom);
+
+      var map = svg.append("g")
+        .attr("class", "map");
+
+      var tooltip = d3.select(".nyczipcode-map")
+        .append("div")
+        .attr("class", "tooltip");
+
+      Promise.all([
+        d3.csv(dataURL),
+        d3.json(geoURL)
+      ])
+        .then(processData)
+        .then(renderMap)
+        .then(renderControl)
+        .then(renderLegend)
+        .then(update);
+
+      function processData(values) {
+        nycGeoJSON = values[1];
+
+        variables = values[0].columns
+          .filter(function (d, i) {
+            return i !== 0 & i % 2 === 0;
+          })
+          .map(csvColumnToVariableName);
+
+        selectedVariable = variables[0];
+
+        values[0].forEach(function (d) {
+          var zipcode = d.zipcode;
+          var values = {};
+          variables.forEach(function (e) {
+            values[e] = {};
+            values[e].before = +d[e.replace(/ /g, "_") + "_before"];
+            values[e].after = +d[e.replace(/ /g, "_") + "_after"];
+          });
+          data.set(zipcode, values);
+        });
+      }
+
+      function renderMap() {
+        projection.fitSize([mapWidth, mapHeight], nycGeoJSON);
+
+        map
+          .selectAll(".zipcode-path")
+          .data(nycGeoJSON.features)
+          .enter().append("path")
+          .attr("class", "zipcode-path")
+          .style("stroke", "#fff")
+          .style("stroke-width", 0.5)
+          .attr("d", geoPath)
+          .on("mouseover", mouseover)
+          .on("mousemove", mousemove)
+          .on("mouseout", mouseout);
+      }
+
+      function renderControl() {
+        // Dropdown
+        var dropdown = side
+          .append("div")
+          .attr("class", "field")
+          .append("div")
+          .attr("class", "dropdown is-hoverable");
+        var dropdownTrigger = dropdown.append("div")
+          .attr("class", "dropdown-trigger")
+          .append("button")
+          .style("width", sideWidth + "px")
+          .attr("class", "button")
+          .attr("aria-haspopup", "true")
+          .attr("aria-controls", "dropdown-menu");
+        dropdownTrigger.append("span")
+          .attr("class", "dropdown-selected")
+          .style("flex", "1")
+          .text(selectedVariable);
+        dropdownTrigger.append("span")
+          .attr("class", "icon is-small")
+          .append("i")
+          .attr("class", "fas fa-angle-down")
+          .attr("aria-hidden", "true");
+        dropdown.append("div")
+          .attr("class", "dropdown-menu")
+          .attr("role", "menu")
+          .append("div")
+          .attr("class", "dropdown-content")
+          .style("min-width", sideWidth + "px")
+          .selectAll(".dropdown-item")
+          .data(variables)
+          .enter().append("a")
+          .attr("class", "dropdown-item")
+          .classed("is-active", function (d) {
+            return d === selectedVariable;
+          })
+          .text(function (d) {
+            return d;
+          })
+          .on("click", function (d) {
+            selectedVariable = d;
+
+            dropdown.select(".dropdown-selected")
+              .text(d);
+            dropdown.selectAll(".dropdown-item")
+              .classed("is-active", function (d) {
+                return d === selectedVariable;
+              });
+
+            update();
+          });
+
+        // Time button
+        var buttons = side
+          .append("div")
+          .attr("class", "field")
+          .append("div")
+          .attr("class", "buttons has-addons")
+          .selectAll(".button")
+          .data(["before", "after"])
+          .enter().append("span")
+          .attr("class", "button")
+          .style("width", sideWidth / 2 + "px")
+          .classed("is-link", function (d) {
+            return d === selectedTime;
+          })
+          .text(function (d) {
+            return d;
+          })
+          .on("click", function (d) {
+            selectedTime = d;
+
+            buttons
+              .classed("is-link", function (d) {
+                return d === selectedTime;
+              });
+
+            update();
+          });
+      }
+
+      function renderLegend() {
+        var legend = side.append("div")
+          .append("svg")
+          .attr("class", "legend")
+          .attr("width", sideWidth)
+          .attr("height", legendItemHeight * 4);
+
+        var legendItem = legend
+          .selectAll(".legend-item")
+          .data(colorScale.range())
+          .enter().append("g")
+          .attr("class", "legend-item")
+          .attr("transform", function (d, i) {
+            return "translate(0," + (legendItemHeight * i + legendRectSize / 2) + ")";
+          });
+
+        legendItem.append("rect")
+          .attr("class", "legend-rect")
+          .attr("x", legendRectSize / 2)
+          .attr("y", -legendRectSize / 2)
+          .attr("width", legendRectSize)
+          .attr("height", legendRectSize)
+          .style("fill", function (d) {
+            return d;
+          });
+
+        legendItem.append("text")
+          .attr("class", "legend-text")
+          .attr("x", legendRectSize * 2)
+          .attr("dy", "0.35em");
+      }
+
+      function update() {
+        var allValues = data.values().map(function (d) {
+          return d[selectedVariable][selectedTime];
+        });
+
+        colorScale.domain(allValues);
+
+        map.selectAll(".zipcode-path")
+          .style("fill", function (d) {
+            var zipcode = d.properties.postalCode
+            var entry = data.get(zipcode);
+            if (entry) {
+              var value = data.get(zipcode)[selectedVariable][selectedTime];
+              return colorScale(value);
+            } else {
+              return "#fff";
+            }
+          });
+
+        side.selectAll(".legend-text")
+          .text(function (d) {
+            var extent = colorScale.invertExtent(d);
+            var start = formatNumber(extent[0]);
+            var end = formatNumber(extent[1]);
+            return start + " to " + end;
+          });
+      }
+
+      function zoomed() {
+        var transform = d3.event.transform;
+        map.attr("transform", transform);
+        map.selectAll(".zipcode-path")
+          .style("stroke-width", 0.5 / transform.k);
+      }
+
+      function mouseover(d) {
+        var zipcode = d.properties.postalCode;
+        var entry = data.get(zipcode);
+        if (!entry) return;
+
+        d3.select(this).raise()
+          .style("stroke", "#000")
+          .style("fill-opacity", 0.9);
+
+        var value = entry[selectedVariable];
+        var before = value.before;
+        var after = value.after;
+        var difference = after - before;
+        var innerHTML = "<div>ZIP Code: <b>" + zipcode + "</b></div>" +
+          "<div>Difference: <b>" + formatNumber(difference) + "</b></div>";
+        tooltip.html(innerHTML);
+
+        tooltip.transition()
+          .duration(100)
+          .style("opacity", 1);
+      }
+
+      function mousemove(d) {
+        var x = d3.event.clientX;
+        var y = d3.event.clientY;
+        tooltip
+          .style("left", (x + 8) + "px")
+          .style("top", (y + 8) + "px");
+      }
+
+      function mouseout() {
+        d3.select(this).style("stroke", "#fff")
+          .style("fill-opacity", 1);
+
+        tooltip.transition()
+          .duration(100)
+          .style("opacity", 0);
+      }
+
+      // Utilities
+      function csvColumnToVariableName(columnName) {
+        var nameWithSpace = columnName.split("_");
+        return nameWithSpace.slice(0, nameWithSpace.length - 1).join(" ");
+      }
+
+    })();
+  </script>
 </body>
+
 </html>
