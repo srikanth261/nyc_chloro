@@ -53,13 +53,14 @@
 
   <script>
     (function () {
-      var dataURL = "all_data.csv";
-      var geoURL = "nyc_zip.geojson";
+      var dataURL = "all_data_sample_v2.csv";
+      var geoURL = "nyczipcodetabulationareas.geojson";
 
       var selectedVariable;
       var selectedTime = "before";
       var data = d3.map();
-      var variables;
+      var variables = d3.map();
+      var variableNames;
       var nycGeoJSON;
 
       var mapWidth = 600;
@@ -68,7 +69,22 @@
       var legendItemHeight = 28;
       var legendRectSize = 20;
 
-      var formatNumber = d3.format(".2f");
+      var formatLegendNumber = function (d) {
+        if (d < 0.01) {
+          return d3.format(".1e")(d);
+        } else {
+          return d3.format(".2f")(d);
+        }
+      };
+
+      var formatTooltipNumber = function (d) {
+        var variableType = variables.get(selectedVariable);
+        if (variableType === "single") {
+          return d;
+        } else if (variableType === "pair") {
+          return d3.format(".2%")(d);
+        }
+      }
 
       var projection = d3.geoMercator();
       var geoPath = d3.geoPath(projection);
@@ -109,21 +125,38 @@
       function processData(values) {
         nycGeoJSON = values[1];
 
-        variables = values[0].columns
-          .filter(function (d, i) {
-            return i !== 0 & i % 2 === 0;
-          })
-          .map(csvColumnToVariableName);
+        values[0].columns.slice(2).forEach(function (d) {
+          var nameWithSpace = d.split("_");
+          var lastWord = nameWithSpace[nameWithSpace.length - 1];
+          if (lastWord === "before") {
+            variables.set(
+              nameWithSpace.slice(0, nameWithSpace.length - 1).join(" "),
+              "pair"
+            );
+          } else if (lastWord === "after") {
+            return;
+          } else {
+            variables.set(
+              nameWithSpace.join(" "),
+              "single"
+            );
+          }
+        });
+        variableNames = variables.keys();
 
-        selectedVariable = variables[0];
+        selectedVariable = variableNames[0];
 
         values[0].forEach(function (d) {
           var zipcode = d.zipcode;
           var values = {};
-          variables.forEach(function (e) {
-            values[e] = {};
-            values[e].before = +d[e.replace(/ /g, "_") + "_before"];
-            values[e].after = +d[e.replace(/ /g, "_") + "_after"];
+          variables.each(function (variableType, variableName) {
+            values[variableName] = {};
+            if (variableType === "pair") {
+              values[variableName].before = +d[variableName.replace(/ /g, "_") + "_before"];
+              values[variableName].after = +d[variableName.replace(/ /g, "_") + "_after"];
+            } else if (variableType === "single") {
+              values[variableName].change = +d[variableName.replace(/ /g, "_")];
+            }
           });
           data.set(zipcode, values);
         });
@@ -175,7 +208,7 @@
           .attr("class", "dropdown-content")
           .style("min-width", sideWidth + "px")
           .selectAll(".dropdown-item")
-          .data(variables)
+          .data(variableNames)
           .enter().append("a")
           .attr("class", "dropdown-item")
           .classed("is-active", function (d) {
@@ -194,6 +227,14 @@
                 return d === selectedVariable;
               });
 
+            var variableType = variables.get(d);
+            side.selectAll(".time-button")
+              .attr("disabled", function (d) {
+                return variableType === "single" ? "disabled" : null;
+              })
+              .classed("is-link", function (d) {
+                return variableType === "single" ? false : d === selectedTime;
+              })
             update();
           });
 
@@ -206,15 +247,21 @@
           .selectAll(".button")
           .data(["before", "after"])
           .enter().append("span")
-          .attr("class", "button")
+          .attr("class", "button time-button")
+          .attr("disabled", function (d) {
+            var variableType = variables.get(selectedVariable);
+            return variableType === "single" ? "disabled" : null;
+          })
           .style("width", sideWidth / 2 + "px")
           .classed("is-link", function (d) {
-            return d === selectedTime;
+            var variableType = variables.get(selectedVariable);
+            return variableType === "single" ? false : d === selectedTime;
           })
           .text(function (d) {
             return d;
           })
           .on("click", function (d) {
+            if (d3.select(this).attr("disabled")) return;
             selectedTime = d;
 
             buttons
@@ -259,8 +306,13 @@
       }
 
       function update() {
+        var variableType = variables.get(selectedVariable);
         var allValues = data.values().map(function (d) {
-          return d[selectedVariable][selectedTime];
+          if (variableType === "single") {
+            return d[selectedVariable].change;
+          } else if (variableType === "pair") {
+            return d[selectedVariable][selectedTime];
+          }
         });
 
         colorScale.domain(allValues);
@@ -270,8 +322,11 @@
             var zipcode = d.properties.postalCode
             var entry = data.get(zipcode);
             if (entry) {
-              var value = data.get(zipcode)[selectedVariable][selectedTime];
-              return colorScale(value);
+              if (variableType === "single") {
+                return colorScale(data.get(zipcode)[selectedVariable].change);
+              } else if (variableType === "pair") {
+                return colorScale(data.get(zipcode)[selectedVariable][selectedTime]);
+              }
             } else {
               return "#fff";
             }
@@ -280,8 +335,8 @@
         side.selectAll(".legend-text")
           .text(function (d) {
             var extent = colorScale.invertExtent(d);
-            var start = formatNumber(extent[0]);
-            var end = formatNumber(extent[1]);
+            var start = formatLegendNumber(extent[0]);
+            var end = formatLegendNumber(extent[1]);
             return start + " to " + end;
           });
       }
@@ -303,11 +358,18 @@
           .style("fill-opacity", 0.9);
 
         var value = entry[selectedVariable];
-        var before = value.before;
-        var after = value.after;
-        var difference = after - before;
+        var change;
+        var variableType = variables.get(selectedVariable);
+        if (variableType === "single") {
+          change = value.change;
+        } else if (variableType === "pair") {
+          var before = value.before;
+          var after = value.after;
+          change = (after - before) / before;
+        }
+
         var innerHTML = "<div>ZIP Code: <b>" + zipcode + "</b></div>" +
-          "<div>Difference: <b>" + formatNumber(difference) + "</b></div>";
+          "<div>Change: <b>" + formatTooltipNumber(change) + "</b></div>";
         tooltip.html(innerHTML);
 
         tooltip.transition()
@@ -331,13 +393,6 @@
           .duration(100)
           .style("opacity", 0);
       }
-
-      // Utilities
-      function csvColumnToVariableName(columnName) {
-        var nameWithSpace = columnName.split("_");
-        return nameWithSpace.slice(0, nameWithSpace.length - 1).join(" ");
-      }
-
     })();
   </script>
 </body>
