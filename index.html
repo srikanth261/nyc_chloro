@@ -24,11 +24,11 @@
 
     .nyczipcode-container .dropdown-selected,
     .nyczipcode-container .dropdown-item,
-    .nyczipcode-container .button {
+    .nyczipcode-container .button,
+    .nyczipcode-container .td-name {
       text-transform: capitalize;
     }
 
-    
     .nyczipcode-container .tooltip {
       position: fixed;
       background: rgba(0, 0, 0, 0.7);
@@ -38,6 +38,15 @@
       pointer-events: none;
       opacity: 0;
       z-index: 1000;
+    }
+
+    .nyczipcode-container .side-table {
+      max-height: 400px;
+      overflow: scroll;
+    }
+
+    .nyczipcode-container td {
+      padding: 0.1em;
     }
   </style>
   <!-- Font Awesome -->
@@ -60,13 +69,15 @@
       var selectedVariable;
       var selectedTime = "before";
       var data = d3.map();
+      var tableData = d3.map();
       var variables = d3.map();
+      var dataColumns;
       var variableNames;
       var nycGeoJSON;
 
       var mapWidth = 600;
       var mapHeight = 600;
-      var sideWidth = 250;
+      var sideWidth = 300;
       var legendItemHeight = 28;
       var legendRectSize = 20;
 
@@ -121,12 +132,19 @@
         .then(renderMap)
         .then(renderControl)
         .then(renderLegend)
+        .then(renderTable)
         .then(update);
 
       function processData(values) {
         nycGeoJSON = values[1];
 
-        values[0].columns.slice(2).forEach(function (d) {
+        values[0].forEach(function (d) {
+          tableData.set(d.zipcode, d);
+        });
+
+        dataColumns = values[0].columns.slice(2);
+
+        dataColumns.forEach(function (d) {
           var nameWithSpace = d.split("_");
           var lastWord = nameWithSpace[nameWithSpace.length - 1];
           if (lastWord === "before") {
@@ -306,6 +324,36 @@
           .attr("dy", "0.35em");
       }
 
+      function renderTable() {
+        var table = side.append("div")
+          .attr("class", "side-table")
+          .append("table")
+          .attr("class", "table is-fullwidth");
+
+        table.append("thead")
+          .append("tr")
+          .selectAll("th")
+          .data(["Variable", "Value"])
+          .enter().append("th")
+          .text(function (d) {
+            return d;
+          });
+
+        var tr = table.append("tbody")
+          .selectAll("tr")
+          .data(dataColumns)
+          .enter().append("tr");
+
+        tr.append("td")
+          .attr("class", "td-name")
+          .text(function (d) {
+            return d.split("_").join(" ");
+          });
+
+        tr.append("td")
+          .attr("class", "td-value");
+      }
+
       function update() {
         var variableType = variables.get(selectedVariable);
         var allValues = data.values().map(function (d) {
@@ -376,6 +424,12 @@
         tooltip.transition()
           .duration(100)
           .style("opacity", 1);
+
+        var entry = tableData.get(zipcode);
+        side.selectAll(".td-value")
+          .text(function (d) {
+            return entry[d];
+          });
       }
 
       function mousemove(d) {
@@ -393,6 +447,9 @@
         tooltip.transition()
           .duration(100)
           .style("opacity", 0);
+
+        side.selectAll(".td-value")
+          .text("");
       }
     })();
   </script>
