@@ -63,8 +63,8 @@
 
   <script>
     (function () {
-      var dataURL = "all_data.csv";
-      var geoURL = "nyc_zip.geojson";
+      var dataURL = "all_data_sample_v2.csv";
+      var geoURL = "nyczipcodetabulationareas.geojson";
 
       var selectedVariable;
       var selectedTime = "before";
@@ -194,7 +194,8 @@
           .attr("d", geoPath)
           .on("mouseover", mouseover)
           .on("mousemove", mousemove)
-          .on("mouseout", mouseout);
+          .on("mouseout", mouseout)
+          .on("click", click);
       }
 
       function renderControl() {
@@ -424,12 +425,6 @@
         tooltip.transition()
           .duration(100)
           .style("opacity", 1);
-
-        var entry = tableData.get(zipcode);
-        side.selectAll(".td-value")
-          .text(function (d) {
-            return entry[d];
-          });
       }
 
       function mousemove(d) {
@@ -447,9 +442,17 @@
         tooltip.transition()
           .duration(100)
           .style("opacity", 0);
+      }
+
+      function click(d) {
+        var zipcode = d.properties.postalCode;
+        var entry = tableData.get(zipcode);
+        if (!entry) return;
 
         side.selectAll(".td-value")
-          .text("");
+          .text(function (d) {
+            return entry[d];
+          });
       }
     })();
   </script>
