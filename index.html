@@ -259,30 +259,30 @@
           });
 
       // Time button
-        var buttons = side
-          .append("div")
-          .attr("class", "field")
-          .append("div")
-          .attr("class", "buttons has-addons")
-          .selectAll(".button")
-          .data(["before", "after"])
-          .enter().append("span")
-          .attr("class", "button time-button")
-          .attr("disabled", function (d) {
-            var variableType = variables.get(selectedVariable);
-            return variableType === "single" ? "disabled" : null;
-          })
-          .style("width", sideWidth / 2 + "px")
-          .classed("is-link", function (d) {
-            var variableType = variables.get(selectedVariable);
-            return variableType === "single" ? false : d === selectedTime;
-          })
-          .text(function (d) {
-            return d;
-          })
-          .on("click", function (d) {
-            if (d3.select(this).attr("disabled")) return;
-            selectedTime = d;
+        //var buttons = side
+        //  .append("div")
+        //  .attr("class", "field")
+        //  .append("div")
+        //  .attr("class", "buttons has-addons")
+        //  .selectAll(".button")
+        //  .data(["before", "after"])
+        //  .enter().append("span")
+        //  .attr("class", "button time-button")
+        //  .attr("disabled", function (d) {
+        //    var variableType = variables.get(selectedVariable);
+        //    return variableType === "single" ? "disabled" : null;
+        //  })
+        //  .style("width", sideWidth / 2 + "px")
+        //  .classed("is-link", function (d) {
+        //    var variableType = variables.get(selectedVariable);
+        //    return variableType === "single" ? false : d === selectedTime;
+        //  })
+        //  .text(function (d) {
+        //    return d;
+        //  })
+        //  .on("click", function (d) {
+        //    if (d3.select(this).attr("disabled")) return;
+        //    selectedTime = d;
 
             //buttons
              // .classed("is-link", function (d) {
@@ -290,7 +290,7 @@
              // });
 
             //update();
-          });
+         // });
       }
 
       function renderLegend() {
